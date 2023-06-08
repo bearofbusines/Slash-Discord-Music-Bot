@@ -4,6 +4,7 @@ import os
 import random
 import traceback
 from dotenv import load_dotenv
+from discord.ext import commands
 
 # importing other classes from other files
 import Utils
@@ -94,18 +95,25 @@ class Bot(discord.Client):  # initiates the bots intents and on_ready event
         intents = discord.Intents.default()
         intents.members = True
         intents.message_content = True
-        super().__init__(intents=intents)
+        super().__init__(intents=intents, command_prefix="mb.", help_command=None)
+
+    async def setup_hook(self):
+        return await super().setup_hook()
 
     async def on_ready(self):
         await tree.sync()  # please dont remove just in case i need to sync
         Utils.pront("Bot is ready", lvl="OKGREEN")
         await self.change_presence(activity=discord.Activity(
             type=discord.ActivityType.watching, name=f"you in {len(bot.guilds):,} Servers."))
+    
+    async def on_command_error(self, ctx, error):
+        await ctx.reply(f"```{error}```", ephemeral=True)
 
 
 # Global Variables
 bot = Bot()
 tree = discord.app_commands.CommandTree(bot)
+
 
 
 ## EVENT LISTENERS ##
@@ -131,9 +139,10 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
 ## COMMANDS ##
 
 
-@ tree.command(name="ping", description="The ping command (^-^)")
-async def _ping(interaction: discord.Interaction) -> None:
-    await interaction.response.send_message('Pong!', ephemeral=True)
+@ commands.hybrid_command(name="ping", description="The ping command (^-^)")
+async def _ping(ctx: commands.Context) -> None:
+    await ctx.defer(ephemeral=True)
+    await ctx.reply('Pong!', ephemeral=True)
 
 
 @ tree.command(name="join", description="Adds the MaBalls to the voice channel you are in")
