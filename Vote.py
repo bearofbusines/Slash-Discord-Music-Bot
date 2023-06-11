@@ -1,17 +1,17 @@
-from discord import Member
+from discord.ext import commands
 
 
 class Vote:
-    def __init__(self, initiator: Member):
+    def __init__(self, initiator: commands.Context.author):
         self.initiator = initiator
         self.voters = [initiator]
 
     def __len__(self) -> int:
         return len(self.voters)
 
-    def add(self, member: Member) -> None:
+    def add(self, member: commands.Context.author) -> None:
         self.voters.append(member)
         return
 
-    def get(self) -> list[Member]:
+    def get(self) -> list[commands.Context.author]:
         return self.voters

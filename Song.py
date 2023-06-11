@@ -1,15 +1,16 @@
 import time
 
 from discord import Member, Interaction
+from discord.ext import commands
 from Vote import Vote
 from YTDLInterface import YTDLInterface
 
 
 class Song:
-    def __init__(self, interaction: Interaction, link: str, dict: dict):
+    def __init__(self, ctx: commands.Context, link: str, dict: dict):
         self.link = link
-        self.requester = interaction.user
-        self.channel = interaction.channel
+        self.requester = ctx.author
+        self.channel = ctx.channel
         self.vote = None
 
         # If there's an unexpected list of entries
@@ -41,8 +42,8 @@ class Song:
         self.pause_time = 0
 
     @classmethod
-    async def from_link(cls, interaction: Interaction, link: str):
-        song = cls(interaction, link, {'webpage_url': link})
+    async def from_link(cls, ctx: commands.Context, link: str):
+        song = cls(ctx, link, {'webpage_url': link})
         await song.populate()
         return song
 

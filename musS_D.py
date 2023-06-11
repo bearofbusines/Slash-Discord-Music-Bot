@@ -1,10 +1,11 @@
-import discord
 import math
 import os
 import random
 import traceback
 from dotenv import load_dotenv
+import discord
 from discord.ext import commands
+from discord import app_commands
 
 # importing other classes from other files
 import Utils
@@ -90,7 +91,7 @@ load_dotenv()  # getting the key from the .env file
 key = os.environ.get('key')
 
 
-class Bot(discord.Client):  # initiates the bots intents and on_ready event
+class Bot(commands.Bot):  # initiates the bots intents and on_ready event
     def __init__(self):
         intents = discord.Intents.default()
         intents.members = True
@@ -98,21 +99,23 @@ class Bot(discord.Client):  # initiates the bots intents and on_ready event
         super().__init__(intents=intents, command_prefix="mb.", help_command=None)
 
     async def setup_hook(self):
-        return await super().setup_hook()
+        await self.tree.sync()
+        print(f"Synced slash commands for {self.user}.")
 
     async def on_ready(self):
-        await tree.sync()  # please dont remove just in case i need to sync
+        #await tree.sync()  # please dont remove just in case i need to sync
         Utils.pront("Bot is ready", lvl="OKGREEN")
         await self.change_presence(activity=discord.Activity(
             type=discord.ActivityType.watching, name=f"you in {len(bot.guilds):,} Servers."))
     
-    async def on_command_error(self, ctx, error):
+    async def on_command_error(self, ctx, error) -> None:
+        print(error)
         await ctx.reply(f"```{error}```", ephemeral=True)
 
 
 # Global Variables
 bot = Bot()
-tree = discord.app_commands.CommandTree(bot)
+#tree = discord.app_commands.CommandTree(bot)
 
 
 
@@ -125,7 +128,7 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
     if member.guild.voice_client is None:
         return
 
-    # If the user was in the same VC as the bot
+    # If the author was in the same VC as the bot
     if before.channel == member.guild.voice_client.channel:
         # If the bot is now alone
         if len(before.channel.members) == 1:
@@ -139,87 +142,91 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
 ## COMMANDS ##
 
 
-@ commands.hybrid_command(name="ping", description="The ping command (^-^)")
+@ bot.hybrid_command(name="ping", with_app_command = True, description="The ping command (^-^)")
 async def _ping(ctx: commands.Context) -> None:
     await ctx.defer(ephemeral=True)
     await ctx.reply('Pong!', ephemeral=True)
 
+@ bot.hybrid_command(name="wimput", with_app_command = True, description="The wimput command (^-^)")
+async def _wimput(ctx: commands.Context, link: str) -> None:
+    await ctx.defer(ephemeral=True)
+    await ctx.reply(f'wimput {link}', ephemeral=True)
 
-@ tree.command(name="join", description="Adds the MaBalls to the voice channel you are in")
-async def _join(interaction: discord.Interaction) -> None:
-    if interaction.user.voice is None:  # checks if the user is in a voice channel
-        await interaction.response.send_message('You are not in a voice channel', ephemeral=True)
+@ bot.hybrid_command(name="join", description="Adds the MaBalls to the voice channel you are in")
+async def _join(ctx: commands.Context) -> None:
+    if ctx.author.voice is None:  # checks if the author is in a voice channel
+        await ctx.reply('You are not in a voice channel', ephemeral=True)
         return
-    if interaction.guild.voice_client is not None:  # checks if the bot is in a voice channel
-        await interaction.response.send_message('I am already in a voice channel', ephemeral=True)
+    if ctx.guild.voice_client is not None:  # checks if the bot is in a voice channel
+        await ctx.reply('I am already in a voice channel', ephemeral=True)
         return
     # Connect to the voice channel
-    await interaction.user.voice.channel.connect(self_deaf=True)
-    await Utils.send(interaction, title='Joined!', content=':white_check_mark:', progress=False)
+    await ctx.author.voice.channel.connect(self_deaf=True)
+    await Utils.send(ctx, title='Joined!', content=':white_check_mark:', progress=False)
 
 
-@ tree.command(name="leave", description="Removes the MaBalls from the voice channel you are in")
-async def _leave(interaction: discord.Interaction) -> None:
-    if not await Utils.Pretests.voice_channel(interaction):
+@ bot.hybrid_command(name="leave", description="Removes the MaBalls from the voice channel you are in")
+async def _leave(ctx: commands.Context) -> None:
+    if not await Utils.Pretests.voice_channel(ctx):
         return
 
     # Clean up if needed
-    if Servers.get_player(interaction.guild_id) is not None:
-        await Utils.clean(Servers.get_player(interaction.guild_id))
+    if Servers.get_player(ctx.guild_id) is not None:
+        await Utils.clean(Servers.get_player(ctx.guild_id))
     # Otherwise, just leave VC
     else:
-        await interaction.guild.voice_client.disconnect()
-    await Utils.send(interaction, title='Left!', content=':white_check_mark:', progress=False)
+        await ctx.guild.voice_client.disconnect()
+    await Utils.send(ctx, title='Left!', content=':white_check_mark:', progress=False)
 
 
-@ tree.command(name="play", description="Plays a song from youtube(or other sources somtimes) in the voice channel you are in")
-async def _play(interaction: discord.Interaction, link: str, top: bool = False) -> None:
+@ bot.hybrid_command(name="play", description="Plays a song from youtube(or other sources somtimes) in the voice channel you are in")
+async def _play(ctx: commands.Context, link: str, top: bool = False) -> None:
     # Check if author is in VC
-    if interaction.user.voice is None:
-        await interaction.response.send_message('You are not in a voice channel', ephemeral=True)
+    if ctx.author.voice is None:
+        await ctx.reply('You are not in a voice channel', ephemeral=True)
         return
 
     # Check if author is in the *right* vc if it applies
-    if interaction.guild.voice_client is not None and interaction.user.voice.channel != interaction.guild.voice_client.channel:
-        await interaction.response.send_message("You must be in the same voice channel in order to use MaBalls", ephemeral=True)
+    if ctx.guild.voice_client is not None and ctx.author.voice.channel != ctx.guild.voice_client.channel:
+        await ctx.reply("You must be in the same voice channel in order to use MaBalls", ephemeral=True)
         return
 
-    await interaction.response.defer(thinking=True)
+    await ctx.defer(thinking=True)
 
     # create song
     scrape = await YTDLInterface.scrape_link(link)
-    song = Song(interaction, link, scrape)
+    song = Song(ctx, link, scrape)
 
     # Check if song didn't initialize properly via scrape
     if song.title is None:
         # If it didn't, query the link instead (resolves searches in the link field)
         query = await YTDLInterface.query_link(link)
-        song = Song(interaction, query.get('original_url'), query)
+        song = Song(ctx, query.get('original_url'), query)
 
     # If not in a VC, join
-    if interaction.guild.voice_client is None:
-        await interaction.user.voice.channel.connect(self_deaf=True)
+    if ctx.guild.voice_client is None:
+        await ctx.author.voice.channel.connect(self_deaf=True)
 
     # If player does not exist, create one.
-    if Servers.get_player(interaction.guild_id) is None:
-        Servers.add(interaction.guild_id, Player(
-            interaction.guild.voice_client, song))
+    if Servers.get_player(ctx.guild_id) is None:
+        Servers.add(ctx.guild_id, Player(
+            ctx.guild.voice_client, song))
         position = 1
     # If it does, add the song to queue
     elif top:
-        if not Utils.Pretests.has_discretionary_authority(interaction):
-            await Utils.send(interaction, title='Insufficient permissions!', 
+        if not Utils.Pretests.has_discretionary_authority(ctx):
+            await Utils.send(ctx, title='Insufficient permissions!', 
                         content="You don't have the correct permissions to use this command!  Please refer to /help for more information.")
             return
-        Servers.get_player(interaction.guild_id).queue.add_at(song, 0)
+        Servers.get_player(ctx.guild_id).queue.add_at(song, 0)
         position = 1
     else:
-        Servers.get_player(interaction.guild_id).queue.add(song)
-        position = len(Servers.get_player(interaction.guild_id).queue.get())
+        Servers.get_player(ctx.guild_id).queue.add(song)
+        position = len(Servers.get_player(ctx.guild_id).queue.get())
         
 
     embed = Utils.get_embed(
-        interaction,
+        ctx,
         title=f'[{position}] Added to Queue:',
         url=song.original_url,
         color=Utils.get_random_hex(song.id)
@@ -228,34 +235,34 @@ async def _play(interaction: discord.Interaction, link: str, top: bool = False) 
     embed.add_field(name='Requested by:', value=song.requester.mention)
     embed.add_field(name='Duration:', value=Song.parse_duration(song.duration))
     embed.set_thumbnail(url=song.thumbnail)
-    await interaction.followup.send(embed=embed)
+    await ctx.followup.send(embed=embed)
 
 
-@ tree.command(name="skip", description="Skips the currently playing song")
-async def _skip(interaction: discord.Interaction) -> None:
-    if not await Utils.Pretests.playing_audio(interaction):
+@ bot.hybrid_command(name="skip", description="Skips the currently playing song")
+async def _skip(ctx: commands.Context) -> None:
+    if not await Utils.Pretests.playing_audio(ctx):
         return
 
-    player = Servers.get_player(interaction.guild_id)
+    player = Servers.get_player(ctx.guild_id)
 
-    await Utils.skip_logic(player, interaction)
+    await Utils.skip_logic(player, ctx)
 
 
-@ tree.command(name="forceskip", description="Skips the currently playing song without having a vote. (Requires Manage Channels permission.)")
-async def _force_skip(interaction: discord.Interaction) -> None:
-    if not await Utils.Pretests.playing_audio(interaction):
+@ bot.hybrid_command(name="forceskip", description="Skips the currently playing song without having a vote. (Requires Manage Channels permission.)")
+async def _force_skip(ctx: commands.Context) -> None:
+    if not await Utils.Pretests.playing_audio(ctx):
         return
 
     # If there's enough users in vc for it to make sense check perms
-    if len(Servers.get_player(interaction.guild_id).vc.channel.members) > 3:
+    if len(Servers.get_player(ctx.guild_id).vc.channel.members) > 3:
         # Check song authority
-        if not Utils.Pretests.has_song_authority(interaction, Servers.get_player(interaction.guild_id).song):
-            await Utils.send(interaction, title='Insufficient permissions!', 
+        if not Utils.Pretests.has_song_authority(ctx, Servers.get_player(ctx.guild_id).song):
+            await Utils.send(ctx, title='Insufficient permissions!', 
                             content="You don't have the correct permissions to use this command!  Please refer to /help for more information.")
             return
         
-    Servers.get_player(interaction.guild_id).vc.stop()
-    await Utils.send(interaction, "Skipped!", ":white_check_mark:")
+    Servers.get_player(ctx.guild_id).vc.stop()
+    await Utils.send(ctx, "Skipped!", ":white_check_mark:")
 
 # Button handling for _queue
 class __QueueButtons(discord.ui.View):
@@ -263,8 +270,8 @@ class __QueueButtons(discord.ui.View):
         self.page = page
         super().__init__(timeout=timeout)
 
-    def get_queue_embed(self, interaction: discord.Interaction):
-        player = Servers.get_player(interaction.guild_id)
+    def get_queue_embed(self, ctx: commands.Context):
+        player = Servers.get_player(ctx.guild_id)
         page_size = 5
         queue_len = len(player.queue)
         max_page = math.ceil(queue_len / page_size)
@@ -280,7 +287,7 @@ class __QueueButtons(discord.ui.View):
         # The index to stop reading from Queue
         max_queue_index = min_queue_index + page_size
 
-        embed = Utils.get_embed(interaction, title='Queue', color=Utils.get_random_hex(
+        embed = Utils.get_embed(ctx, title='Queue', color=Utils.get_random_hex(
             player.song.id), progress=False)
 
         # Loop through the region of songs in this page
@@ -297,80 +304,80 @@ class __QueueButtons(discord.ui.View):
         return embed
 
     @discord.ui.button(style=discord.ButtonStyle.blurple, emoji="⬅")
-    async def button_left(self,interaction:discord.Interaction,button:discord.ui.Button):
+    async def button_left(self,ctx: commands.Context,button:discord.ui.Button):
         self.page -= 1
-        await interaction.response.edit_message(embed=self.get_queue_embed(interaction), view=self)
+        await ctx.response.edit_message(embed=self.get_queue_embed(ctx), view=self)
         
     @discord.ui.button(style=discord.ButtonStyle.blurple, emoji="➡")
-    async def button_right(self,interaction:discord.Interaction,button:discord.ui.Button):
+    async def button_right(self,ctx: commands.Context,button:discord.ui.Button):
         self.page += 1
-        await interaction.response.edit_message(embed=self.get_queue_embed(interaction), view=self)
+        await ctx.response.edit_message(embed=self.get_queue_embed(ctx), view=self)
 
-@ tree.command(name="queue", description="Shows the current queue")
-async def _queue(interaction: discord.Interaction, page: int = 1) -> None:
-    if not await Utils.Pretests.player_exists(interaction):
+@ bot.hybrid_command(name="queue", description="Shows the current queue")
+async def _queue(ctx: commands.Context, page: int = 1) -> None:
+    if not await Utils.Pretests.player_exists(ctx):
         return
     # Convert page into non-user friendly (woah scary it starts at 0)(if only we were using lua)
     page -= 1
-    player = Servers.get_player(interaction.guild_id)
+    player = Servers.get_player(ctx.guild_id)
     if not player.queue.get():
-        await Utils.send(interaction, title='Queue is empty!', ephemeral=True)
+        await Utils.send(ctx, title='Queue is empty!', ephemeral=True)
         return
 
     qb = __QueueButtons(page=page)
 
-    await interaction.response.send_message(embed=qb.get_queue_embed(interaction), view=qb)
+    await ctx.reply(embed=qb.get_queue_embed(ctx), view=qb)
 
 
-@ tree.command(name="replay", description="Restarts the current song")
-async def _replay(interaction: discord.Interaction) -> None:
-    if not await Utils.Pretests.playing_audio(interaction):
+@ bot.hybrid_command(name="replay", description="Restarts the current song")
+async def _replay(ctx: commands.Context) -> None:
+    if not await Utils.Pretests.playing_audio(ctx):
         return
     
-    player = Servers.get_player(interaction.guild_id)
+    player = Servers.get_player(ctx.guild_id)
 
-    if not Utils.Pretests.has_song_authority(interaction, player.song):
-        await Utils.send(interaction, title='Insufficient permissions!', 
+    if not Utils.Pretests.has_song_authority(ctx, player.song):
+        await Utils.send(ctx, title='Insufficient permissions!', 
                         content="You don't have the correct permissions to use this command!  Please refer to /help for more information.")
         return
     
-    player = Servers.get_player(interaction.guild_id)
+    player = Servers.get_player(ctx.guild_id)
     # Just add it to the top of the queue and skip to it
     # Dirty, but it works.
     player.queue.add_at(player.song, 0)
     player.vc.stop()
-    await Utils.send(interaction, title='⏪ Rewound')
+    await Utils.send(ctx, title='⏪ Rewound')
 
 
-@ tree.command(name="now", description="Shows the current song")
-async def _now(interaction: discord.Interaction) -> None:
-    if not await Utils.Pretests.player_exists(interaction):
+@ bot.hybrid_command(name="now", description="Shows the current song")
+async def _now(ctx: commands.Context) -> None:
+    if not await Utils.Pretests.player_exists(ctx):
         return
-    if (Servers.get_player(interaction.guild_id).song is None):
-        await Utils.send(interaction, title="Nothing is playing", content="You should add something", progress=False)
+    if (Servers.get_player(ctx.guild_id).song is None):
+        await Utils.send(ctx, title="Nothing is playing", content="You should add something", progress=False)
         return
-    await interaction.response.send_message(embed=Utils.get_now_playing_embed(Servers.get_player(interaction.guild_id), progress=True))
+    await ctx.reply(embed=Utils.get_now_playing_embed(Servers.get_player(ctx.guild_id), progress=True))
 
 
-@ tree.command(name="remove", description="Removes a song from the queue")
-async def _remove(interaction: discord.Interaction, number_in_queue: int) -> None:
-    if not await Utils.Pretests.player_exists(interaction):
+@ bot.hybrid_command(name="remove", description="Removes a song from the queue")
+async def _remove(ctx: commands.Context, number_in_queue: int) -> None:
+    if not await Utils.Pretests.player_exists(ctx):
         return
     # Convert to non-human-readable
     number_in_queue -= 1
-    song = Servers.get_player(interaction.guild_id).queue.get(number_in_queue)
+    song = Servers.get_player(ctx.guild_id).queue.get(number_in_queue)
 
     if song is None:
-        await Utils.send(interaction, "Queue index does not exist.")
+        await Utils.send(ctx, "Queue index does not exist.")
         return
     
-    if not Utils.Pretests.has_song_authority(interaction, song):
-        await Utils.send(interaction, title='Insufficient permissions!', 
+    if not Utils.Pretests.has_song_authority(ctx, song):
+        await Utils.send(ctx, title='Insufficient permissions!', 
                         content="You don't have the correct permissions to use this command!  Please refer to /help for more information.")
         return
 
     removed_song = Servers.get_player(
-        interaction.guild_id).queue.remove(number_in_queue)
+        ctx.guild_id).queue.remove(number_in_queue)
     # TODO, Why do we do this?
     if removed_song is not None:
         embed = discord.Embed(
@@ -387,20 +394,20 @@ async def _remove(interaction: discord.Interaction, number_in_queue: int) -> Non
         embed.set_thumbnail(url=removed_song.thumbnail)
         embed.set_author(name=removed_song.requester.display_name,
                          icon_url=removed_song.requester.display_avatar.url)
-        await interaction.response.send_message(embed=embed)
+        await ctx.reply(embed=embed)
 
 
-@ tree.command(name="removeuser", description="Removes all of the songs added by a specific user")
-async def _remove_user(interaction: discord.Interaction, member: discord.Member):
-    if not await Utils.Pretests.player_exists(interaction):
+@ bot.hybrid_command(name="removeuser", description="Removes all of the songs added by a specific user")
+async def _remove_user(ctx: commands.Context, member: discord.Member):
+    if not await Utils.Pretests.player_exists(ctx):
         return
     
-    if not Utils.Pretests.has_discretionary_authority(interaction):
-        await Utils.send(interaction, title='Insufficient permissions!', 
+    if not Utils.Pretests.has_discretionary_authority(ctx):
+        await Utils.send(ctx, title='Insufficient permissions!', 
                         content="You don't have the correct permissions to use this command!  Please refer to /help for more information.")
         return
     
-    queue = Servers.get_player(interaction.guild.id).queue
+    queue = Servers.get_player(ctx.guild.id).queue
 
     # TODO either make this an int or fill out the send embed more
     removed = []
@@ -413,33 +420,33 @@ async def _remove_user(interaction: discord.Interaction, member: discord.Member)
         # Only increment i when song.requester != member
         i += 1
 
-    await Utils.send(interaction,
+    await Utils.send(ctx,
                      title=f'Removed {len(removed)} songs.')
 
 
-@ tree.command(name="playlist", description="Adds a playlist to the queue")
-async def _playlist(interaction: discord.Interaction, link: str, shuffle: bool = False) -> None:
+@ bot.hybrid_command(name="playlist", description="Adds a playlist to the queue")
+async def _playlist(ctx: commands.Context, link: str, shuffle: bool = False) -> None:
     # Check if author is in VC
-    if interaction.user.voice is None:
-        await interaction.response.send_message('You are not in a voice channel', ephemeral=True)
+    if ctx.author.voice is None:
+        await ctx.reply('You are not in a voice channel', ephemeral=True)
         return
 
     # Check if author is in the *right* vc if it applies
-    if interaction.guild.voice_client is not None and interaction.user.voice.channel != interaction.guild.voice_client.channel:
-        await interaction.response.send_message("You must be in the same voice channel in order to use MaBalls", ephemeral=True)
+    if ctx.guild.voice_client is not None and ctx.author.voice.channel != ctx.guild.voice_client.channel:
+        await ctx.reply("You must be in the same voice channel in order to use MaBalls", ephemeral=True)
         return
 
-    await interaction.response.defer(thinking=True)
+    await ctx.defer(thinking=True)
 
     playlist = await YTDLInterface.scrape_link(link)
 
     if playlist.get('_type') != "playlist":
-        await interaction.followup.send(embed=Utils.get_embed(interaction, "Not a playlist."), ephemeral=True)
+        await ctx.followup.send(embed=Utils.get_embed(ctx, "Not a playlist."), ephemeral=True)
         return
 
     # Might not proc, there for extra protection
     if len(playlist.get("entries")) == 0:
-        await interaction.followup.send("Playlist Entries [] empty.")
+        await ctx.followup.send("Playlist Entries [] empty.")
 
     # Detect if this is a Mix
     if playlist.get("uploader") is None:
@@ -448,8 +455,8 @@ async def _playlist(interaction: discord.Interaction, link: str, shuffle: bool =
         playlist.update({"entries": playlist.get("entries")[:50]})
 
     # If not in a VC, join
-    if interaction.guild.voice_client is None:
-        await interaction.user.voice.channel.connect(self_deaf=True)
+    if ctx.guild.voice_client is None:
+        await ctx.author.voice.channel.connect(self_deaf=True)
 
     # Shuffle the entries[] within playlist before processing them
     if shuffle:
@@ -458,18 +465,18 @@ async def _playlist(interaction: discord.Interaction, link: str, shuffle: bool =
     for entry in playlist.get("entries"):
 
         # Feed the Song the entire entry, saves time by not needing to create and fill a dict
-        song = Song(interaction, link, entry)
+        song = Song(ctx, link, entry)
 
         # If player does not exist, create one.
-        if Servers.get_player(interaction.guild_id) is None:
-            Servers.add(interaction.guild_id, Player(
-                interaction.guild.voice_client, song))
+        if Servers.get_player(ctx.guild_id) is None:
+            Servers.add(ctx.guild_id, Player(
+                ctx.guild.voice_client, song))
         # If it does, add the song to queue
         else:
-            Servers.get_player(interaction.guild_id).queue.add(song)
+            Servers.get_player(ctx.guild_id).queue.add(song)
 
     embed = Utils.get_embed(
-        interaction,
+        ctx,
         title='Added playlist to Queue:',
         url=playlist.get('original_url'),
         color=Utils.get_random_hex(playlist.get('id'))
@@ -477,7 +484,7 @@ async def _playlist(interaction: discord.Interaction, link: str, shuffle: bool =
     embed.add_field(name=playlist.get('uploader'), value=playlist.get('title'))
     embed.add_field(
         name='Length:', value=f'{playlist.get("playlist_count")} songs')
-    embed.add_field(name='Requested by:', value=interaction.user.mention)
+    embed.add_field(name='Requested by:', value=ctx.author.mention)
 
     # Get the highest resolution thumbnail available
     if playlist.get('thumbnails'):
@@ -486,7 +493,7 @@ async def _playlist(interaction: discord.Interaction, link: str, shuffle: bool =
         thumbnail = playlist.get('entries')[0].get('thumbnails')[-1].get('url')
     embed.set_thumbnail(url=thumbnail)
 
-    await interaction.followup.send(embed=embed)
+    await ctx.followup.send(embed=embed)
 
 
 # Button handling for __search
@@ -496,26 +503,26 @@ class __SearchSelection(discord.ui.View):
         super().__init__(timeout=timeout)
     
     # All the buttons will call this method to add the song to queue
-    async def __selector(self, index: int, interaction: discord.Interaction) -> None:
+    async def __selector(self, index: int, ctx: commands.Context) -> None:
         entry = self.query_result.get('entries')[index]
-        song = Song(interaction, entry.get('original_url'), entry)
+        song = Song(ctx, entry.get('original_url'), entry)
 
         # If not in a VC, join
-        if interaction.guild.voice_client is None:
-            await interaction.user.voice.channel.connect(self_deaf=True)
+        if ctx.guild.voice_client is None:
+            await ctx.author.voice.channel.connect(self_deaf=True)
 
         # If player does not exist, create one.
-        if Servers.get_player(interaction.guild_id) is None:
-            Servers.add(interaction.guild_id, Player(
-                interaction.guild.voice_client, song))
+        if Servers.get_player(ctx.guild_id) is None:
+            Servers.add(ctx.guild_id, Player(
+                ctx.guild.voice_client, song))
         # If it does, add the song to queue
         else:
-            Servers.get_player(interaction.guild_id).queue.add(song)
+            Servers.get_player(ctx.guild_id).queue.add(song)
 
         # Create embed to go along with it
         embed = Utils.get_embed(
-            interaction,
-            title=f'[{len(Servers.get_player(interaction.guild_id).queue.get())} Added to Queue:',
+            ctx,
+            title=f'[{len(Servers.get_player(ctx.guild_id).queue.get())} Added to Queue:',
             url=song.original_url,
             color=Utils.get_random_hex(song.id)
         )
@@ -524,52 +531,52 @@ class __SearchSelection(discord.ui.View):
         embed.add_field(name='Duration:',
                         value=Song.parse_duration(song.duration))
         embed.set_thumbnail(url=song.thumbnail)
-        await interaction.response.send_message(embed=embed)
+        await ctx.reply(embed=embed)
 
 
     @discord.ui.button(label="1",style=discord.ButtonStyle.blurple)
-    async def button_one(self,interaction:discord.Interaction,button:discord.ui.Button):
-        await self.__selector(0, interaction)
+    async def button_one(self,ctx: commands.Context,button:discord.ui.Button):
+        await self.__selector(0, ctx)
 
     @discord.ui.button(label="2",style=discord.ButtonStyle.blurple)
-    async def button_two(self,interaction:discord.Interaction,button:discord.ui.Button):
-        await self.__selector(1, interaction)
+    async def button_two(self,ctx: commands.Context,button:discord.ui.Button):
+        await self.__selector(1, ctx)
 
     @discord.ui.button(label="3",style=discord.ButtonStyle.blurple)
-    async def button_three(self,interaction:discord.Interaction,button:discord.ui.Button):
-        await self.__selector(2, interaction)
+    async def button_three(self,ctx: commands.Context,button:discord.ui.Button):
+        await self.__selector(2, ctx)
 
     @discord.ui.button(label="4",style=discord.ButtonStyle.blurple)
-    async def button_four(self,interaction:discord.Interaction,button:discord.ui.Button):
-        await self.__selector(3, interaction)
+    async def button_four(self,ctx: commands.Context,button:discord.ui.Button):
+        await self.__selector(3, ctx)
 
     @discord.ui.button(label="5",style=discord.ButtonStyle.blurple)
-    async def button_five(self,interaction:discord.Interaction,button:discord.ui.Button):
-        await self.__selector(4, interaction)
+    async def button_five(self,ctx: commands.Context,button:discord.ui.Button):
+        await self.__selector(4, ctx)
 
 
-@ tree.command(name="search", description="Searches YouTube for a given query")
-async def _search(interaction: discord.Interaction, query: str) -> None:
+@ bot.hybrid_command(name="search", description="Searches YouTube for a given query")
+async def _search(ctx: commands.Context, query: str) -> None:
     # Check if author is in VC
-    if interaction.user.voice is None:
-        await interaction.response.send_message('You are not in a voice channel', ephemeral=True)
+    if ctx.author.voice is None:
+        await ctx.reply('You are not in a voice channel', ephemeral=True)
         return
 
     # Check if author is in the *right* vc if it applies
-    if interaction.guild.voice_client is not None and interaction.user.voice.channel != interaction.guild.voice_client.channel:
-        await interaction.response.send_message("You must be in the same voice channel in order to use MaBalls", ephemeral=True)
+    if ctx.guild.voice_client is not None and ctx.author.voice.channel != ctx.guild.voice_client.channel:
+        await ctx.reply("You must be in the same voice channel in order to use MaBalls", ephemeral=True)
         return
 
-    await interaction.response.defer(thinking=True)
+    await ctx.defer(thinking=True)
 
     query_result = await YTDLInterface.scrape_search(query)
 
     embeds = []
-    embeds.append(Utils.get_embed(interaction,
+    embeds.append(Utils.get_embed(ctx,
                                   title="Search results:",
                                   ))
     for i, entry in enumerate(query_result.get('entries')):
-        embed = Utils.get_embed(interaction,
+        embed = Utils.get_embed(ctx,
                                 title=f'`[{i+1}]`  {entry.get("title")} -- {entry.get("channel")}',
                                 url=entry.get('url'),
                                 color=Utils.get_random_hex(
@@ -580,80 +587,80 @@ async def _search(interaction: discord.Interaction, query: str) -> None:
         embed.set_thumbnail(url=entry.get('thumbnails')[-1].get('url'))
         embeds.append(embed)
 
-    await interaction.followup.send(embeds=embeds, view=__SearchSelection(query_result))
+    await ctx.followup.send(embeds=embeds, view=__SearchSelection(query_result))
 
 
-@ tree.command(name="clear", description="Clears the queue")
-async def _clear(interaction: discord.Interaction) -> None:
-    if not await Utils.Pretests.player_exists(interaction):
+@ bot.hybrid_command(name="clear", description="Clears the queue")
+async def _clear(ctx: commands.Context) -> None:
+    if not await Utils.Pretests.player_exists(ctx):
         return
     
-    if not Utils.Pretests.has_discretionary_authority(interaction):
-        await Utils.send(interaction, title='Insufficient permissions!', 
+    if not Utils.Pretests.has_discretionary_authority(ctx):
+        await Utils.send(ctx, title='Insufficient permissions!', 
                         content="You don't have the correct permissions to use this command!  Please refer to /help for more information.")
         return
 
-    Servers.get_player(interaction.guild_id).queue.clear()
-    await interaction.response.send_message('💥 Queue cleared')
+    Servers.get_player(ctx.guild_id).queue.clear()
+    await ctx.reply('💥 Queue cleared')
 
 
-@ tree.command(name="shuffle", description="Shuffles the queue")
-async def _shuffle(interaction: discord.Interaction) -> None:
-    if not await Utils.Pretests.player_exists(interaction):
+@ bot.hybrid_command(name="shuffle", description="Shuffles the queue")
+async def _shuffle(ctx: commands.Context) -> None:
+    if not await Utils.Pretests.player_exists(ctx):
         return
-    player = Servers.get_player(interaction.guild_id)
+    player = Servers.get_player(ctx.guild_id)
     # If there's enough people, require authority to shuffle
     if len(player.vc.channel.members) > 4:
-        if not Utils.Pretests.has_discretionary_authority(interaction):
-            await Utils.send(interaction, title='Insufficient permissions!', 
+        if not Utils.Pretests.has_discretionary_authority(ctx):
+            await Utils.send(ctx, title='Insufficient permissions!', 
                         content="You don't have the correct permissions to use this command!  Please refer to /help for more information.")
             return
             
     player.queue.shuffle()
-    await interaction.response.send_message('🔀 Queue shuffled')
+    await ctx.reply('🔀 Queue shuffled')
 
 
-@ tree.command(name="pause", description="Pauses the current song")
-async def _pause(interaction: discord.Interaction) -> None:
-    if not await Utils.Pretests.player_exists(interaction):
+@ bot.hybrid_command(name="pause", description="Pauses the current song")
+async def _pause(ctx: commands.Context) -> None:
+    if not await Utils.Pretests.player_exists(ctx):
         return
-    Servers.get_player(interaction.guild_id).vc.pause()
-    Servers.get_player(interaction.guild_id).song.pause()
-    await Utils.send(interaction, title='⏸ Paused')
+    Servers.get_player(ctx.guild_id).vc.pause()
+    Servers.get_player(ctx.guild_id).song.pause()
+    await Utils.send(ctx, title='⏸ Paused')
 
 
-@ tree.command(name="resume", description="Resumes the current song")
-async def _resume(interaction: discord.Interaction) -> None:
-    if not await Utils.Pretests.playing_audio(interaction):
+@ bot.hybrid_command(name="resume", description="Resumes the current song")
+async def _resume(ctx: commands.Context) -> None:
+    if not await Utils.Pretests.playing_audio(ctx):
         return
-    Servers.get_player(interaction.guild_id).vc.resume()
-    Servers.get_player(interaction.guild_id).song.resume()
-    await Utils.send(interaction, title='▶ Resumed')
+    Servers.get_player(ctx.guild_id).vc.resume()
+    Servers.get_player(ctx.guild_id).song.resume()
+    await Utils.send(ctx, title='▶ Resumed')
 
 
-@ tree.command(name="loop", description="Loops the current song")
-async def _loop(interaction: discord.Interaction) -> None:
-    if not await Utils.Pretests.player_exists(interaction):
+@ bot.hybrid_command(name="loop", description="Loops the current song")
+async def _loop(ctx: commands.Context) -> None:
+    if not await Utils.Pretests.player_exists(ctx):
         return
-    player = Servers.get_player(interaction.guild.id)
+    player = Servers.get_player(ctx.guild.id)
     player.set_loop(not player.looping)
-    await Utils.send(interaction, title='🔂 Looped.' if player.looping else 'Loop disabled.')
+    await Utils.send(ctx, title='🔂 Looped.' if player.looping else 'Loop disabled.')
 
-@ tree.command(name="queueloop", description="Loops the queue")
-async def _queue_loop(interaction: discord.Interaction) -> None:
-    if not await Utils.Pretests.player_exists(interaction):
+@ bot.hybrid_command(name="queueloop", description="Loops the queue")
+async def _queue_loop(ctx: commands.Context) -> None:
+    if not await Utils.Pretests.player_exists(ctx):
         return
-    player = Servers.get_player(interaction.guild.id)
+    player = Servers.get_player(ctx.guild.id)
     player.set_queue_loop(not player.queue_looping)
-    await Utils.send(interaction, title='🔁 Queue looped.' if player.queue_looping else 'Queue loop disabled.')
+    await Utils.send(ctx, title='🔁 Queue looped.' if player.queue_looping else 'Queue loop disabled.')
 
-@ tree.command(name="trueloop", description="Loops and adds songs to a random position in queue")
-async def _true_loop(interaction: discord.Interaction) -> None:
-    player = Servers.get_player(interaction.guild.id)
+@ bot.hybrid_command(name="trueloop", description="Loops and adds songs to a random position in queue")
+async def _true_loop(ctx: commands.Context) -> None:
+    player = Servers.get_player(ctx.guild.id)
     player.set_true_loop(not player.queue_looping)
-    await Utils.send(interaction, title='♾ True looped.' if player.true_looping else 'True loop disabled.')
+    await Utils.send(ctx, title='♾ True looped.' if player.true_looping else 'True loop disabled.')
 
-@ tree.command(name="help", description="Shows the help menu")
+@ bot.hybrid_command(name="help", description="Shows the help menu")
 @ discord.app_commands.describe(commands="choose a command to see more info")
 @ discord.app_commands.choices(commands=[
     discord.app_commands.Choice(name="ping", value="ping"),
@@ -676,39 +683,38 @@ async def _true_loop(interaction: discord.Interaction) -> None:
     discord.app_commands.Choice(name="loop", value="loop"),
     discord.app_commands.Choice(name="queueloop", value="queueloop")
 ])
-async def _help(interaction: discord.Interaction, commands: discord.app_commands.Choice[str] = "") -> None:
+async def _help(ctx: commands.Context, commands: discord.app_commands.Choice[str] = "") -> None:
     if not commands:
         main_embed = Pages.main_page
         embed = Utils.get_embed(
-            interaction, title=main_embed["title"], content=main_embed["description"])
+            ctx, title=main_embed["title"], content=main_embed["description"])
         for field in main_embed["fields"]:
             embed.add_field(name=field["name"], value=field["value"])
-        await interaction.response.send_message(embed=embed)
+        await ctx.reply(embed=embed)
         return
     command_embed_dict = Pages.get_page(commands.value)
     embed = Utils.get_embed(
-        interaction, title=command_embed_dict["title"], content=command_embed_dict["description"])
+        ctx, title=command_embed_dict["title"], content=command_embed_dict["description"])
     for field in command_embed_dict["fields"]:
         embed.add_field(name=field["name"], value=field["value"])
-    await interaction.response.send_message(embed=embed)
+    await ctx.reply(embed=embed)
 
 # Custom error handler
 
-
-async def on_tree_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
+'''
+async def on_tree_error(ctx: commands.Context, error: discord.app_commands.AppCommandError):
 
     # If a yt_dlp DownloadError was raised
     if isinstance(error.original, yt_dlp.utils.DownloadError):
-        await interaction.followup.send(embed=Utils.get_embed(interaction, "An error occurred while trying to parse the link.",
+        await ctx.followup.send(embed=Utils.get_embed(ctx, "An error occurred while trying to parse the link.",
                                                               content=f'```ansi\n{error.original.exc_info[1]}```'))
         # Return here because we don't want to print an obvious error like this.
         return
 
     # Fallback default error
-    await interaction.followup.send(embed=Utils.get_embed(interaction, title="MaBalls ran into Ma issue.", content=f'```ansi\n{error}```'))
+    await ctx.followup.send(embed=Utils.get_embed(ctx, title="MaBalls ran into Ma issue.", content=f'```ansi\n{error}```'))
     # Allows entire error to be printed without raising an exception
     # (would create an infinite loop as it would be caught by this function)
     traceback.print_exc()
-tree.on_error = on_tree_error
-
+'''
 bot.run(key)
