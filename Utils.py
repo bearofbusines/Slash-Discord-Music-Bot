@@ -76,7 +76,7 @@ async def send(ctx: commands.Context, title='', content='', url='', color='', ep
 
 
 def get_now_playing_embed(player: Player, progress: bool = False) -> discord.Embed:
-    title_message = f'Now Playing:\t{":repeat_one: " if player.looping else ""}{":repeat: " if player.queue_looping else ""}'
+    title_message = f'Now Playing:\t{":repeat_one: " if player.looping else ""}{":repeat: " if player.queue_looping else ""}{":infinity: " if player.true_looping else ""}'
     embed = discord.Embed(
         title=title_message,
         url=player.song.original_url,
